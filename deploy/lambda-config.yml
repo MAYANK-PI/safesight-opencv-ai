@@ -1,0 +1,71 @@
+# Lambda deployment configuration for SafeSight AI
+# Note: Lambda has 15-min timeout limit, suitable for short videos only
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SafeSight AI Lambda function for video analysis
+
+Globals:
+  Function:
+    Timeout: 900  # 15 minutes max
+    MemorySize: 3008  # Max for better CPU
+    Runtime: python3.11
+    Environment:
+      Variables:
+        AWS_S3_BUCKET: !Ref EvidenceBucket
+        AWS_CLOUDWATCH_LOG_GROUP: /aws/lambda/safesight-ai
+        MODEL_PATH: /var/task/models/yolo11n.onnx
+
+Resources:
+  SafesightFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: backend.lambda_handler.handler
+      CodeUri: .
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref EvidenceBucket
+        - S3WritePolicy:
+            BucketName: !Ref EvidenceBucket
+        - CloudWatchPutMetricPolicy: {}
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /analyze
+            Method: post
+            RestApiId: !Ref SafesightApi
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: safesight-evidence-${AWS::AccountId}-${AWS::Region}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldEvidence
+            Status: Enabled
+            ExpirationInDays: 90
+
+  SafesightApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST,GET,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+
+  ProcessingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/safesight-ai
+      RetentionInDays: 30
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${SafesightApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt SafesightFunction.Arn

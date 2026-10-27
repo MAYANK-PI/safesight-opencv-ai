@@ -1,0 +1,107 @@
+import React, { useState } from 'react';
+import axios from 'axios';
+
+const Home = () => {
+  const [video, setVideo] = useState(null);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleVideoChange = (e) => {
+    if (e.target.files[0]) {
+      setVideo(e.target.files[0]);
+    }
+  };
+
+  const handleAnalyze = async (e) => {
+    e.preventDefault();
+    if (!video) {
+      setError('Please select a video file.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setAnalysisResult(null);
+
+    const formData = new FormData();
+    formData.append('file', video);
+
+    try {
+      const response = await axios.post('http://localhost:8000/analyze', formData);
+      setAnalysisResult(response.data);
+    } catch (err) {
+      console.error(err);
+      let errorMessage = 'Failed to analyze video. Make sure the backend is running and accessible at http://localhost:8000';
+      if (err.response) {
+        // Server responded with a status other than 2xx
+        errorMessage = `Server error: ${err.response.status} ${err.response.statusText}`;
+        if (err.response.data && err.response.data.detail) {
+          errorMessage += ` - ${err.response.data.detail}`;
+        }
+      } else if (err.request) {
+        // Request was made but no response received
+        errorMessage = 'No response received from server. Make sure the backend is running.';
+      } else {
+        // Something else happened while setting up the request
+        errorMessage = `Request error: ${err.message}`;
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="home">
+      <h2>Video Analysis</h2>
+      <form onSubmit={handleAnalyze} className="video-upload-form">
+        <div>
+          <label htmlFor="video">Select Video File:</label>
+          <input
+            type="file"
+            id="video"
+            accept="video/*"
+            onChange={handleVideoChange}
+            disabled={loading}
+          />
+          {video && <p>Selected: {video.name}</p>}
+        </div>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Analyzing...' : 'Analyze Video'}
+        </button>
+      </form>
+
+      {error && <div className="error">{error}</div>}
+
+      {analysisResult && (
+        <div className="results">
+          <h3>Analysis Results</h3>
+          <p><strong>Message:</strong> {analysisResult.message}</p>
+          {analysisResult.incident_id && (
+            <p><strong>Incident ID:</strong> {analysisResult.incident_id}</p>
+          )}
+          <div>
+            <h4>Events ({analysisResult.events.length})</h4>
+            {analysisResult.events.map((ev, idx) => (
+              <div key={idx} className="event-item">
+                <strong>{ev.event_type}</strong> (person {ev.person_id}) at {new Date(ev.timestamp * 1000).toLocaleTimeString()} - {ev.status}
+              </div>
+            ))}
+          </div>
+          <div>
+            <h4>Agent Decisions ({analysisResult.decisions.length})</h4>
+            {analysisResult.decisions.map((dec, idx) => (
+              <div key={idx} className="decision-item">
+                <strong>{dec.decision}</strong> (person {dec.person_id}): {dec.reason}
+                <br/>
+                <small>Action: {dec.next_action}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Home;

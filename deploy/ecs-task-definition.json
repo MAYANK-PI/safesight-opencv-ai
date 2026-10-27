@@ -1,0 +1,46 @@
+{
+  "family": "safesight-ai",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/safesightTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "safesight-backend",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/safesight-ai:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "AWS_REGION", "value": "us-east-1" },
+        { "name": "AWS_S3_BUCKET", "value": "safesight-evidence-bucket" },
+        { "name": "AWS_CLOUDWATCH_LOG_GROUP", "value": "/aws/industrial-safety-inspector" }
+      ],
+      "secrets": [
+        { "name": "AWS_ACCESS_KEY_ID", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:safesight/aws-credentials:ACCESS_KEY_ID::" },
+        { "name": "AWS_SECRET_ACCESS_KEY", "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:safesight/aws-credentials:SECRET_ACCESS_KEY::" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/safesight-ai",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

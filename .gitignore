@@ -1,0 +1,100 @@
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+.aws/
+*.pem
+*.key
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs and generated output
+*.log
+logs/
+*.tmp
+
+# Generated video-analysis evidence
+evidence/
+artifacts/
+
+
+
+
+
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp/
+*.tmp
+*.temp
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Model files (large, should be downloaded separately)
+models/*.onnx
+models/*.pt
+models/*.pth
+
+# Incident data
+incidents/
+evidence-*.jpg
+
+# Docker
+.docker/
+
+# Backup
+backup_*/

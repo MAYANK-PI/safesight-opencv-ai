@@ -1,0 +1,247 @@
+﻿import cv2
+import json
+import os
+import shutil
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Dict, Any
+
+import numpy as np
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+# Import our modules
+from backend.vision.analyzer import SafetyAnalyzer
+from backend.vision.roi import RegionOfInterest
+from backend.agent.agent import SafetyAgent
+from backend.agent.actions import execute_action, continue_tracking, create_incident, resolve_incident, request_human_approval, no_action
+
+# ------------------ Configuration ------------------
+# TODO: Make these configurable via environment variables or config file
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "yolo11n.onnx")
+# Example ROI polygon (adjust as needed)
+ROI_POLYGON = [(0, 350), (800, 350), (800, 800), (0, 800)]  # TEST ROI ONLY
+CONFIRMATION_DURATION = 3.0  # seconds
+REQUEST_DURATION = 3.0  # seconds for agent to request more evidence
+
+# ------------------ Global instances ------------------
+# Initialize analyzer and agent (they will be reused across requests)
+# Note: In a production setting, you might want to initialize per request or use a pool.
+# For simplicity, we create them globally.
+if not os.path.exists(MODEL_PATH):
+    # We'll still allow the app to start; the analyzer will raise an error when used.
+    print(f"Warning: Model file not found at {MODEL_PATH}. Please place your ONNX model there.")
+analyzer = SafetyAnalyzer(
+    model_path=MODEL_PATH,
+    roi_polygon=ROI_POLYGON,
+    confirmation_duration=CONFIRMATION_DURATION,
+    confidence_threshold=0.5,
+    nms_threshold=0.4
+)
+agent = SafetyAgent(request_duration=REQUEST_DURATION)
+
+# ------------------ FastAPI app ------------------
+app = FastAPI(title="AI Industrial Safety Inspector", version="0.1.0")
+
+# ------------------ Helper functions ------------------
+def get_incident_dirs() -> List[Path]:
+    """Return list of incident directories sorted by creation time (newest first)."""
+    incidents_root = Path("incidents")
+    if not incidents_root.exists():
+        return []
+    dirs = [p for p in incidents_root.iterdir() if p.is_dir()]
+    # Sort by modification time, newest first
+    dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return dirs
+
+def load_incident_metadata(incident_id: str) -> Optional[Dict[str, Any]]:
+    """Load metadata.json for a given incident ID."""
+    incident_dir = Path("incidents") / incident_id
+    metadata_path = incident_dir / "metadata.json"
+    if not metadata_path.exists():
+        return None
+    with open(metadata_path, "r") as f:
+        return json.load(f)
+
+# ------------------ Pydantic models ------------------
+class AnalyzeResponse(BaseModel):
+    message: str
+    events: List[Dict[str, Any]]
+    decisions: List[Dict[str, Any]]
+    incident_id: Optional[str] = None
+
+class IncidentInfo(BaseModel):
+    incident_id: str
+    event_type: str
+    timestamp: float
+    person_id: int
+    status: str
+
+class StatusUpdate(BaseModel):
+    status: str  # e.g., "approved", "rejected"
+
+# ------------------ Routes ------------------
+@app.get("/health")
+def health_check():
+    """Health check endpoint."""
+    return {"status": "ok", "timestamp": time.time()}
+
+@app.post("/analyze", response_model=AnalyzeResponse)
+async def analyze_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Upload a video file and process it for safety violations.
+    The video is processed frameâ€‘byâ€‘frame using the vision analyzer and agent.
+    Returns the list of events, agent decisions, and any incident created.
+    """
+    # Save uploaded file to a temporary location
+    temp_dir = Path("temp")
+    temp_dir.mkdir(exist_ok=True)
+    temp_file = temp_dir / f"{uuid.uuid4()}_{file.filename}"
+    try:
+        with open(temp_file, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    finally:
+        await file.close()
+
+    # Open the video
+    cap = cv2.VideoCapture(str(temp_file))
+    if not cap.isOpened():
+        raise HTTPException(status_code=400, detail="Could not open video file.")
+
+    # Process video frame by frame
+    events_all = []
+    decisions_all = []
+    incident_id = None
+    frame_idx = 0
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_idx += 1
+
+            # Run the analyzer on the frame
+            annotated_frame, events = analyzer.update(frame)
+            if events:
+                events_all.extend(events)
+                # For each event, get agent decision
+                for event in events:
+                    # Pass the frame to the agent? The agent currently doesn't need the frame.
+                    decisions = agent.update([event])
+                    decisions_all.extend(decisions)
+                    # Execute any actions returned by the agent
+                    for decision in decisions:
+                        action_type = decision["next_action"]
+                        person_id = decision["person_id"]
+                        parameters = decision["parameters"]
+                        # We need to pass the frame and metadata to the action if needed.
+                        # For simplicity, we'll extract relevant info from the event and frame.
+                        # We'll create a metadata dict for the action.
+                        action_metadata = {
+                            "event_type": event.get("event_type"),
+                            "confidence": event.get("confidence"),
+                            "zone": event.get("zone"),
+                            "timestamp": event.get("timestamp"),
+                            "duration": event.get("duration"),
+                            "person_id": person_id,
+                            # Frame is passed separately for evidence capture.
+                        }
+                        # Execute the action (this may create incident, etc.)
+                        # We'll use the execute_action helper from actions.py
+                        # Note: execute_action expects person_id, parameters, frame, metadata
+                        # We'll adapt: we'll pass the frame and the metadata we built.
+                        # However, execute_action currently expects a specific signature.
+                        # Let's instead call the action functions directly based on action_type.
+                        # We'll do a simple dispatch.
+                        if action_type == "continue_tracking":
+                            continue_tracking(person_id, parameters)
+                        elif action_type == "create_incident":
+                            # For create_incident, we need to pass frame and metadata
+                            incident_id = create_incident(person_id, parameters, frame, action_metadata)
+                        elif action_type == "resolve_incident":
+                            resolve_incident(person_id, parameters)
+                        elif action_type == "request_human_approval":
+                            request_human_approval(str(person_id), parameters)
+                        else:
+                            # no_action or unknown
+                            no_action(person_id, parameters)
+    finally:
+        cap.release()
+        # Clean up temporary file
+        try:
+            os.remove(temp_file)
+        except OSError:
+            pass
+
+    # Return results
+    return AnalyzeResponse(
+        message="Video processing completed.",
+        events=events_all,
+        decisions=decisions_all,
+        incident_id=incident_id
+    )
+
+@app.get("/incidents", response_model=List[IncidentInfo])
+def list_incidents():
+    """List all incident IDs with basic info."""
+    incidents = []
+    for incident_dir in get_incident_dirs():
+        metadata = load_incident_metadata(incident_dir.name)
+        if metadata:
+            incidents.append(IncidentInfo(
+                incident_id=incident_dir.name,
+                event_type=metadata.get("event_type", "unknown"),
+                timestamp=metadata.get("timestamp", 0.0),
+                person_id=metadata.get("person_id", 0),
+                status=metadata.get("status", "unknown")
+            ))
+    return incidents
+
+@app.get("/incidents/{incident_id}")
+def get_incident(incident_id: str):
+    """Get full metadata for a specific incident."""
+    metadata = load_incident_metadata(incident_id)
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    return metadata
+
+@app.post("/incidents/{incident_id}/approve")
+def approve_incident(incident_id: str, status_update: StatusUpdate):
+    """Approve an incident (update its status)."""
+    incident_dir = Path("incidents") / incident_id
+    metadata_path = incident_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise HTTPException(status_code=404, detail="Incident not found")
+    with open(metadata_path, "r") as f:
+        metadata = json.load(f)
+    metadata["status"] = status_update.status
+    metadata["approved_at"] = time.time()
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return {"message": f"Incident {incident_id} approved."}
+
+@app.post("/incidents/{incident_id}/reject")
+def reject_incident(incident_id: str, status_update: StatusUpdate):
+    """Reject an incident (update its status)."""
+    incident_dir = Path("incidents") / incident_id
+    metadata_path = incident_dir / "metadata.json"
+    if not metadata_path.exists():
+        raise HTTPException(status_code=404, detail="Incident not found")
+    with open(metadata_path, "r") as f:
+        metadata = json.load(f)
+    metadata["status"] = status_update.status
+    metadata["rejected_at"] = time.time()
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return {"message": f"Incident {incident_id} rejected."}
+
+# ------------------ Run with uvicorn if executed directly ------------------
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+

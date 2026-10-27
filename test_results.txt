@@ -1,0 +1,79 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.6, pytest-9.1.1, pluggy-1.6.0 -- E:\opencv5-pro\opencv-agentic-vision\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: E:\opencv5-pro\opencv-agentic-vision
+plugins: anyio-4.15.1
+collecting ... collected 25 items
+
+tests/test_agent.py::test_agent_entry_and_confirmation PASSED            [  4%]
+tests/test_agent.py::test_agent_entry_then_exit_no_confirmation PASSED   [  8%]
+tests/test_agent.py::test_agent_multiple_persons PASSED                  [ 12%]
+tests/test_analyzer.py::test_analyzer_state_transitions PASSED           [ 16%]
+tests/test_analyzer.py::test_analyzer_confirmation_with_mocked_time PASSED [ 20%]
+tests/test_analyzer.py::test_analyzer_exit_event PASSED                  [ 24%]
+tests/test_aws.py::test_s3_missing_credentials PASSED                    [ 28%]
+tests/test_aws.py::test_cloudwatch_missing_credentials FAILED            [ 32%]
+tests/test_aws.py::test_s3_upload_file_not_found PASSED                  [ 36%]
+tests/test_aws.py::test_cloudwatch_log_event_handles_errors_gracefully PASSED [ 40%]
+tests/test_main.py::test_health_endpoint PASSED                          [ 44%]
+tests/test_main.py::test_list_incidents_empty PASSED                     [ 48%]
+tests/test_main.py::test_get_incident_not_found PASSED                   [ 52%]
+tests/test_main.py::test_app_can_be_imported PASSED                      [ 56%]
+tests/test_motion.py::test_motion_analyzer_update PASSED                 [ 60%]
+tests/test_motion.py::test_motion_analyzer_history_limit PASSED          [ 64%]
+tests/test_opencv.py::test_opencv_version PASSED                         [ 68%]
+tests/test_opencv.py::test_video_capture PASSED                          [ 72%]
+tests/test_roi.py::test_roi_point_in_polygon PASSED                      [ 76%]
+tests/test_roi.py::test_roi_centroid PASSED                              [ 80%]
+tests/test_roi.py::test_roi_draw PASSED                                  [ 84%]
+tests/test_tracker.py::test_centroid_tracker_register PASSED             [ 88%]
+tests/test_tracker.py::test_centroid_tracker_update PASSED               [ 92%]
+tests/test_tracker.py::test_centroid_tracker_disappear PASSED            [ 96%]
+tests/test_tracker.py::test_centroid_tracker_new_detection PASSED        [100%]
+
+================================== FAILURES ===================================
+_____________________ test_cloudwatch_missing_credentials _____________________
+
+    def test_cloudwatch_missing_credentials():
+        """Test that CloudWatch functions return False when credentials are missing."""
+        with patch.dict(os.environ, {}, clear=True):
+            from backend.aws.cloudwatch import (
+                _get_logs_client,
+                log_event,
+                log_detection_event,
+                log_agent_decision,
+                log_confirmed_incident,
+                log_processing_metrics
+            )
+            client = _get_logs_client()
+            assert client is None, "Expected None CloudWatch client when credentials are missing"
+    
+            # Logging functions should return False (not sent to CloudWatch) but not raise
+            assert log_event("test-group", "test-stream", "test message") is False
+>           assert log_detection_event({}) is False
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_aws.py:44: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+event = {}
+
+    def log_detection_event(event: dict) -> bool:
+        """
+        Convenience function to log a detection event from the analyzer.
+        """
+        log_group = os.getenv("AWS_CLOUDWATCH_LOG_GROUP", "/aws/industrial-safety-inspector")
+        log_stream = "detection_events"
+>       message = f"DETECTION_EVENT: {json.dumps(event)}"
+                                      ^^^^
+E       NameError: name 'json' is not defined. Did you forget to import 'json'?
+
+backend\aws\cloudwatch.py:137: NameError
+------------------------------ Captured log call ------------------------------
+WARNING  backend.aws.cloudwatch:cloudwatch.py:19 AWS credentials not fully set. CloudWatch Logs functionality will be disabled.
+WARNING  backend.aws.cloudwatch:cloudwatch.py:19 AWS credentials not fully set. CloudWatch Logs functionality will be disabled.
+WARNING  backend.aws.cloudwatch:cloudwatch.py:69 CloudWatch Logs client not available. Logging to local logger only.
+INFO     backend.aws.cloudwatch:cloudwatch.py:70 [test-stream] test message
+=========================== short test summary info ===========================
+FAILED tests/test_aws.py::test_cloudwatch_missing_credentials - NameError: na...
+======================== 1 failed, 24 passed in 0.74s =========================

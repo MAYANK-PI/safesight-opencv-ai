@@ -1,0 +1,44 @@
+{
+    "Version":  "2012-10-17",
+    "Statement":  [
+                      {
+                          "Sid":  "S3EvidenceAccess",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "s3:PutObject",
+                                         "s3:GetObject",
+                                         "s3:ListBucket"
+                                     ],
+                          "Resource":  [
+                                           "arn:aws:s3:::safesight-ai-evidence",
+                                           "arn:aws:s3:::safesight-ai-evidence/*"
+                                       ]
+                      },
+                      {
+                          "Sid":  "CloudWatchLogsAccess",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "logs:CreateLogGroup",
+                                         "logs:CreateLogStream",
+                                         "logs:PutLogEvents",
+                                         "logs:DescribeLogGroups",
+                                         "logs:DescribeLogStreams"
+                                     ],
+                          "Resource":  "arn:aws:logs:ap-south-1:513483285726:log-group:/aws/industrial-safety-inspector:*"
+                      },
+                      {
+                          "Sid":  "CloudWatchMetricsAccess",
+                          "Effect":  "Allow",
+                          "Action":  [
+                                         "cloudwatch:PutMetricData",
+                                         "cloudwatch:ListMetrics"
+                                     ],
+                          "Resource":  "*",
+                          "Condition":  {
+                                            "StringEquals":  {
+                                                                 "cloudwatch:namespace":  "SafeSightAI"
+                                                             }
+                                        }
+                      }
+                  ]
+}

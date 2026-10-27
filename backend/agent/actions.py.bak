@@ -1,0 +1,143 @@
+"""
+Actions module for the agentic vision system.
+Contains functions to perform actions based on agent decisions.
+"""
+import time
+import uuid
+from typing import Dict, Any, Optional
+import numpy as np
+import cv2
+
+# We'll import other modules as needed, but for now we'll stub them.
+# In a full implementation, these functions would interact with:
+# - The vision analyzer to get tracking data and frames
+# - The evidence capture system to save images
+# - The AWS module to upload to S3 and log to CloudWatch
+# - A notification system for human approval
+
+def continue_tracking(person_id: int, parameters: Dict[str, Any]) -> bool:
+    """
+    Instruct the system to continue tracking a person for a specified duration.
+    This is more of a signal to the main loop to keep the person in active tracking.
+
+    Args:
+        person_id: The ID of the person to track.
+        parameters: May contain 'duration_seconds' how long to continue.
+
+    Returns:
+        True if the action was acknowledged.
+    """
+    duration = parameters.get('duration_seconds', 3)
+    # In practice, this would set a flag in the tracking system or return a decision
+    # to the main loop to not drop this person's track for the given duration.
+    print(f"ACTION: Continue tracking person {person_id} for {duration} seconds")
+    return True
+
+def create_incident(person_id: int, parameters: Dict[str, Any], frame: Optional[np.ndarray] = None, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Create a safety incident record and save evidence.
+
+    Args:
+        person_id: The ID of the person involved.
+        parameters: Additional parameters from the decision.
+        frame: The current frame (or evidence frame) to save.
+        metadata: Additional metadata to save with the incident.
+
+    Returns:
+        incident_id: A unique identifier for the created incident.
+    """
+    incident_id = str(uuid.uuid4())
+    timestamp = time.time()
+
+    # In a full implementation, we would:
+    # 1. Save the frame as an image (e.g., to disk or S3)
+    # 2. Save metadata (JSON) with incident details
+    # 3. Optionally upload to S3 and log to CloudWatch
+
+    print(f"ACTION: Create incident {incident_id} for person {person_id} at {timestamp}")
+    if frame is not None:
+        print(f"  - Saving evidence frame (shape: {frame.shape})")
+    if metadata:
+        print(f"  - Metadata: {metadata}")
+
+    # Placeholder: return the incident ID
+    return incident_id
+
+def resolve_incident(person_id: int, parameters: Dict[str, Any]) -> bool:
+    """
+    Resolve an incident (e.g., when person exits the zone after confirmation).
+
+    Args:
+        person_id: The ID of the person.
+        parameters: Additional parameters.
+
+    Returns:
+        True if the incident was marked as resolved.
+    """
+    print(f"ACTION: Resolve incident for person {person_id}")
+    # In practice, we would update the incident status to 'resolved' in a database or log.
+    return True
+
+def request_human_approval(incident_id: str, parameters: Dict[str, Any]) -> bool:
+    """
+    Request human approval for an incident (e.g., before taking automatic action).
+
+    Args:
+        incident_id: The incident identifier.
+        parameters: Additional parameters.
+
+    Returns:
+        True if the request was sent.
+    """
+    print(f"ACTION: Request human approval for incident {incident_id}")
+    # In practice, this might send a notification to a UI or send an email/SMS.
+    return True
+
+def no_action(person_id: int, parameters: Dict[str, Any]) -> bool:
+    """
+    Perform no action (used when agent decides nothing is needed).
+
+    Args:
+        person_id: The ID of the person.
+        parameters: Additional parameters (usually empty).
+
+    Returns:
+        True always.
+    """
+    print(f"ACTION: No action for person {person_id}")
+    return True
+
+# Mapping from action_type string to function
+ACTION_FUNCTIONS = {
+    "continue_tracking": continue_tracking,
+    "create_incident": create_incident,
+    "resolve_incident": resolve_incident,
+    "request_human_approval": request_human_approval,
+    "none": no_action,
+}
+
+def execute_action(action_type: str, person_id: int, parameters: Dict[str, Any],
+                   frame: Optional[np.ndarray] = None, metadata: Optional[Dict[str, Any]] = None) -> bool:
+    """
+    Execute an action based on the action type.
+
+    Args:
+        action_type: String indicating the action to perform.
+        person_id: The ID of the person involved.
+        parameters: Parameters for the action.
+        frame: Optional frame for evidence capture.
+        metadata: Optional metadata for the incident.
+
+    Returns:
+        True if the action was executed successfully.
+    """
+    func = ACTION_FUNCTIONS.get(action_type, no_action)
+    if func == create_incident:
+        return func(person_id, parameters, frame, metadata)
+    elif func == request_human_approval:
+        # Note: request_human_approval expects incident_id, not person_id.
+        # In a real system, we would have the incident_id from context.
+        # For now, we'll pass person_id as a placeholder.
+        return func(str(person_id), parameters)
+    else:
+        return func(person_id, parameters)
