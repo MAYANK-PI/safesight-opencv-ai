@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SafeSight AI — Agentic Vision for Industrial Safety Inspection
 
 [![OpenCV](https://img.shields.io/badge/OpenCV-5.0.0-green)](https://opencv.org/)
@@ -196,3 +197,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 **Competition Entry**: OpenCV + AWS Competition 2024
 **Team**: SafeSight AI
 **Demo**: [5-minute walkthrough](docs/demo-script.md)
+=======
+# safesight-opencv-ai
+its an opencv-ai vision project
+>>>>>>> 8a8604e7042b1470c91a15574106272036560ca8
