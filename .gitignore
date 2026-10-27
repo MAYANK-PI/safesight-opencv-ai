@@ -98,3 +98,8 @@ evidence-*.jpg
 
 # Backup
 backup_*/
+# Local Python environments
+.venv/
+.venv-export/
+venv/
+
